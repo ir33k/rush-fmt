@@ -17,29 +17,33 @@ Compile and run:
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define SIZE(array) (sizeof (array) / sizeof (array[0]))
 
-static char root_path[4096]={0};	// Root path to project
 static char project_names[46][4096];	// List of rush project names
-static unsigned pni;			// Number of project names
 static char project_paths[46][4096];	// List of project paths
-static unsigned ppi;			// Number of project paths
+static unsigned pni, ppi;		// Number of project names and paths
 
 static int project_indexof(char *name) {
 	unsigned i;
 	for (i=0; i<pni; i++) {
-		if (strcmp(name, project_names[i]) == 0) {
-			return i;
-		}
+		if (!strcmp(name, project_names[i])) return i;
 	}
 	return -1;	// Not found
 }
 
+static void get_captures(char dst[][4096], char *src, regmatch_t pmatch[], int n) {
+	while (n--) {
+		sprintf(dst[n], "%.*s",
+			(int)(pmatch[n+1].rm_eo - pmatch[n+1].rm_so),
+			src + pmatch[n+1].rm_so);
+	}
+}
+
 /* Parse Rush configuration file defining project_names and project_paths. */
 static void parse_cfg(char *path) {
-	char buf[4096], *str;
-	unsigned len;
+	char buf[4096], str[2][4096];
 	FILE *fp;
 	regex_t reg;
 	regmatch_t pmatch[4];
@@ -53,22 +57,14 @@ static void parse_cfg(char *path) {
 		if (regexec(&reg, buf, SIZE(pmatch), pmatch, 0)) {
 			continue;
 		}
-		str = buf + pmatch[1].rm_so;
-		len = pmatch[1].rm_eo - pmatch[1].rm_so;
-		str[len] = 0;
-		if (strcmp("packageName", str) == 0) {
-			sprintf(project_names[pni++], "%.*s",
-				(int)(pmatch[2].rm_eo - pmatch[2].rm_so),
-				buf + pmatch[2].rm_so);
+		get_captures(str, buf, pmatch, 2);
+		if (!strcmp("packageName", str[0])) {
+			strcpy(project_names[pni++], str[1]);
 			assert(pni < SIZE(project_names));
-			continue;
 		}
-		if (strcmp("projectFolder", str) == 0) {
-			sprintf(project_paths[ppi++], "%.*s",
-				(int)(pmatch[2].rm_eo - pmatch[2].rm_so),
-				buf + pmatch[2].rm_so);
+		if (!strcmp("projectFolder", str[0])) {
+			strcpy(project_paths[ppi++], str[1]);
 			assert(ppi < SIZE(project_paths));
-			continue;
 		}
 	}
 	if (fclose(fp)) {
@@ -78,72 +74,41 @@ static void parse_cfg(char *path) {
 }
 
 int main(void) {
-	char buf[4096], str[4][4096];
-	int is_type_check=0, pi=-1, errors_count=0;
-	regex_t reg_cfg, reg_cmd, reg_project, reg_err, reg_code;
+	char buf[4096], cwd[4096], root_path[4096]={0}, str[4][4096];
+	int pi=-1, errors_count=0;
+	regex_t reg_cfg, reg_proj, reg_err;
 	regmatch_t pmatch[6];
 	//
 	regcomp(&reg_cfg, "^Found configuration in (.*)\n$", REG_EXTENDED);
-	regcomp(&reg_cmd, "^Starting (.*)\n$", REG_EXTENDED);
-	regcomp(&reg_project, "^==\\[ (.*) \\]=+\\[ [0-9]+ of [0-9]+ \\]==\n$", REG_EXTENDED);
+	regcomp(&reg_proj, "^==\\[ (.*) \\]=+\\[ [0-9]+ of [0-9]+ \\]==\n$", REG_EXTENDED);
 	regcomp(&reg_err, "^(.*\\.tsx?).([0-9]+).([0-9]+)..*error (.*)\n$", REG_EXTENDED);
-	regcomp(&reg_code, "^Returned error code: ([0-9]+)\n$", REG_EXTENDED);
 	//
+	getcwd(cwd, sizeof cwd);
 	while (fgets(buf, sizeof buf, stdin)) {
-		if (regexec(&reg_cfg, buf, SIZE(pmatch), pmatch, 0) == 0) {
-			sprintf(str[0], "%.*s",
-				(int)(pmatch[1].rm_eo - pmatch[1].rm_so),
-				buf + pmatch[1].rm_so);
-			sprintf(root_path, "%s", dirname(str[0]));
+		if (!regexec(&reg_cfg, buf, SIZE(pmatch), pmatch, 0)) {
+			get_captures(str, buf, pmatch, 1);
+			strcpy(root_path, dirname(str[0]));
 			parse_cfg(str[0]);
-			printf("%s", buf);
-			continue;
+			pi = -1;	
 		}
-		if (regexec(&reg_cmd, buf, SIZE(pmatch), pmatch, 0) == 0) {
-			sprintf(str[0], "%.*s",
-				(int)(pmatch[1].rm_eo - pmatch[1].rm_so),
-				buf + pmatch[1].rm_so);
-			is_type_check = strcmp("\"rush type-check\"", str[0]) == 0;
-			printf("%s", buf);
-			continue;
-		}
-		// Nothing more to do if this is not a rush type-check command.
-		if (!is_type_check) {
-			printf("%s", buf);
-			continue;
-		}
-		if (regexec(&reg_project, buf, SIZE(pmatch), pmatch, 0) == 0) {
-			sprintf(str[0], "%.*s",
-				(int)(pmatch[1].rm_eo - pmatch[1].rm_so),
-				buf + pmatch[1].rm_so);
+		if (!regexec(&reg_proj, buf, SIZE(pmatch), pmatch, 0)) {
+			get_captures(str, buf, pmatch, 1);
 			pi = project_indexof(str[0]);
-			assert(pi != -1);
-			printf("%s", buf);
-			continue;
 		}
-		if (regexec(&reg_err, buf, SIZE(pmatch), pmatch, 0) == 0) {
-			assert(pi != -1);
-			sprintf(str[0], "%.*s",
-				(int)(pmatch[1].rm_eo - pmatch[1].rm_so),
-				buf + pmatch[1].rm_so);
-			sprintf(str[1], "%.*s",
-				(int)(pmatch[2].rm_eo - pmatch[2].rm_so),
-				buf + pmatch[2].rm_so);
-			sprintf(str[2], "%.*s",
-				(int)(pmatch[3].rm_eo - pmatch[3].rm_so),
-				buf + pmatch[3].rm_so);
-			sprintf(str[3], "%.*s",
-				(int)(pmatch[4].rm_eo - pmatch[4].rm_so),
-				buf + pmatch[4].rm_so);
-			printf("%s/%s/%s:%d:%d: error:\n\t%s\n",
-			       root_path,
-			       project_paths[pi],
+		if (!regexec(&reg_err, buf, SIZE(pmatch), pmatch, 0)) {
+			get_captures(str, buf, pmatch, 4);
+			printf("%s/%s%s%s:%d:%d: error:\n\t%s\n",
+			       // NOTE(irek): When PI project index is unknown
+			       // then use CWD as file path prefix.
+			       pi == -1 ? cwd : root_path,
+			       pi == -1 ? "" : project_paths[pi],
+			       pi == -1 ? "" : "/",
 			       str[0],		// File path
 			       atoi(str[1]),	// Line
 			       atoi(str[2]),	// Column
 			       str[3]);		// Error msg
 			errors_count++;
-			continue;
+			continue;	// Skip default printer
 		}
 		printf("%s", buf);
 	}
