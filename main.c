@@ -21,9 +21,15 @@ Compile and run:
 
 #define SIZE(array) (sizeof (array) / sizeof (array[0]))
 
-static char project_names[46][4096];	// List of rush project names
-static char project_paths[46][4096];	// List of project paths
-static unsigned pni, ppi;		// Number of project names and paths
+// NOTE(irek): This is an arbitrary limit to how many projects rush repository
+// can have for this program to work correctly.  Limit can be safely changed
+// when needed.  It does affect performance of project_index() function as it
+// does linear search but this should be fine even for 1000+ projects.
+#define PLIMIT 64
+
+static char project_names[PLIMIT][4096];	// List of rush project names
+static char project_paths[PLIMIT][4096];	// List of project paths
+static unsigned pni, ppi;	// Number of project names and paths
 
 static int project_indexof(char *name) {
 	unsigned i;
@@ -33,6 +39,9 @@ static int project_indexof(char *name) {
 	return -1;	// Not found
 }
 
+/* Collect PMATCH capture groups from 1 to N (inclusive) from SRC source string
+ * into DST array from 0 to N (exclusive) as null terminated strings being
+ * copy of the captured string. */
 static void get_captures(char dst[][4096], char *src, regmatch_t pmatch[], int n) {
 	while (n--) {
 		sprintf(dst[n], "%.*s",
@@ -46,7 +55,7 @@ static void parse_conf(char *path) {
 	char buf[4096], str[2][4096];
 	FILE *fp;
 	regex_t reg;
-	regmatch_t pmatch[4];
+	regmatch_t pmatch[3];
 	regcomp(&reg, "^ *\"(.*)\": *\"(.*)\",?\n$", REG_EXTENDED);
 	if (!(fp = fopen(path, "r"))) {
 		err(1, "parse_conf fopen %s", path);
@@ -77,7 +86,7 @@ int main(void) {
 	char buf[4096], cwd[4096], root_path[4096]={0}, str[4][4096];
 	int pi=-1, errors_count=0;
 	regex_t reg_conf, reg_proj, reg_err;
-	regmatch_t pmatch[6];
+	regmatch_t pmatch[5];
 	//
 	regcomp(&reg_conf, "^Found configuration in (.*)\n$", REG_EXTENDED);
 	regcomp(&reg_proj, "^==\\[ (.*) \\]=+\\[ [0-9]+ of [0-9]+ \\]==\n$", REG_EXTENDED);
