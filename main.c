@@ -42,14 +42,14 @@ static void get_captures(char dst[][4096], char *src, regmatch_t pmatch[], int n
 }
 
 /* Parse Rush configuration file defining project_names and project_paths. */
-static void parse_cfg(char *path) {
+static void parse_conf(char *path) {
 	char buf[4096], str[2][4096];
 	FILE *fp;
 	regex_t reg;
 	regmatch_t pmatch[4];
 	regcomp(&reg, "^ *\"(.*)\": *\"(.*)\",?\n$", REG_EXTENDED);
 	if (!(fp = fopen(path, "r"))) {
-		err(1, "parse_cfg fopen %s", path);
+		err(1, "parse_conf fopen %s", path);
 	}
 	pni = 0;
 	ppi = 0;
@@ -68,7 +68,7 @@ static void parse_cfg(char *path) {
 		}
 	}
 	if (fclose(fp)) {
-		err(1, "parse_cfg fclose %s", path);
+		err(1, "parse_conf fclose %s", path);
 	}
 	assert(pni == ppi);
 }
@@ -76,19 +76,19 @@ static void parse_cfg(char *path) {
 int main(void) {
 	char buf[4096], cwd[4096], root_path[4096]={0}, str[4][4096];
 	int pi=-1, errors_count=0;
-	regex_t reg_cfg, reg_proj, reg_err;
+	regex_t reg_conf, reg_proj, reg_err;
 	regmatch_t pmatch[6];
 	//
-	regcomp(&reg_cfg, "^Found configuration in (.*)\n$", REG_EXTENDED);
+	regcomp(&reg_conf, "^Found configuration in (.*)\n$", REG_EXTENDED);
 	regcomp(&reg_proj, "^==\\[ (.*) \\]=+\\[ [0-9]+ of [0-9]+ \\]==\n$", REG_EXTENDED);
 	regcomp(&reg_err, "^(.*\\.tsx?).([0-9]+).([0-9]+)..*error (.*)\n$", REG_EXTENDED);
 	//
 	getcwd(cwd, sizeof cwd);
 	while (fgets(buf, sizeof buf, stdin)) {
-		if (!regexec(&reg_cfg, buf, SIZE(pmatch), pmatch, 0)) {
+		if (!regexec(&reg_conf, buf, SIZE(pmatch), pmatch, 0)) {
 			get_captures(str, buf, pmatch, 1);
 			strcpy(root_path, dirname(str[0]));
-			parse_cfg(str[0]);
+			parse_conf(str[0]);
 			pi = -1;	
 		}
 		if (!regexec(&reg_proj, buf, SIZE(pmatch), pmatch, 0)) {
