@@ -87,11 +87,11 @@ int main(void) {
 	int pi=-1, errors_count=0;
 	regex_t reg_conf, reg_proj, reg_err;
 	regmatch_t pmatch[5];
-	//
+
 	regcomp(&reg_conf, "^Found configuration in (.*)\n$", REG_EXTENDED);
-	regcomp(&reg_proj, "^==\\[ (.*) \\]=+\\[ [0-9]+ of [0-9]+ \\]==\n$", REG_EXTENDED);
+	regcomp(&reg_proj, "^[-=]+\\[ (FAILURE: )?(.*) \\][-=]+\\[ .* \\][-=]+\n$", REG_EXTENDED);
 	regcomp(&reg_err, "^(.*\\.tsx?).([0-9]+).([0-9]+)..*error (.*)\n$", REG_EXTENDED);
-	//
+
 	getcwd(cwd, sizeof cwd);
 	while (fgets(buf, sizeof buf, stdin)) {
 		if (!regexec(&reg_conf, buf, SIZE(pmatch), pmatch, 0)) {
@@ -101,8 +101,8 @@ int main(void) {
 			pi = -1;	
 		}
 		if (!regexec(&reg_proj, buf, SIZE(pmatch), pmatch, 0)) {
-			get_captures(str, buf, pmatch, 1);
-			pi = project_indexof(str[0]);
+			get_captures(str, buf, pmatch, 2);
+			pi = project_indexof(str[1]);
 		}
 		if (!regexec(&reg_err, buf, SIZE(pmatch), pmatch, 0)) {
 			get_captures(str, buf, pmatch, 4);
